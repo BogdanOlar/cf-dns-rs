@@ -1,0 +1,9 @@
+services:
+  cf-dns-rs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cf-dns-rs
+    restart: unless-stopped
+    env_file:
+      - .env
