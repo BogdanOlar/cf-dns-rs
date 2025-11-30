@@ -215,8 +215,8 @@ fn cf_create_record(record: &Record, zone_id: &str, api_token: &str) -> Result<(
         .send()
         .map_err(|e| {
             error!(
-                "Could not create DNS record for host '{}' with ip '{}' in zone '{}': {}",
-                record.name, record.content, zone_id, e
+                "Could not create DNS record for host '{}' with ip '{}': {}",
+                record.name, record.content, e
             );
             ()
         })?;
@@ -226,12 +226,12 @@ fn cf_create_record(record: &Record, zone_id: &str, api_token: &str) -> Result<(
     } else {
         match res.text() {
             Ok(text) => error!(
-                "Failed to create DNS record for host '{}' with ip '{}' in zone '{}': {}",
-                record.name, record.content, zone_id, text
+                "Failed to create DNS record for host '{}' with ip '{}': {}",
+                record.name, record.content, text
             ),
             Err(e) => error!(
-                "Failed to create DNS record for host '{}' with ip '{}' in zone '{}': {}",
-                record.name, record.content, zone_id, e
+                "Failed to create DNS record for host '{}' with ip '{}': {}",
+                record.name, record.content, e
             ),
         }
         error!("\tRequest URL: {post_url}");
@@ -255,14 +255,14 @@ fn cf_get_records(zone_id: &str, api_token: &str) -> Result<Vec<CfRecord>, ()> {
         .header("Content-Type", "application/json")
         .send()
         .map_err(|e| {
-            error!("Could not get DNS records in zone '{}': {}", zone_id, e);
+            error!("Could not get DNS records: {}", e);
             ()
         })?;
 
     let json = match res.json::<serde_json::Value>() {
         Ok(v) => v,
         Err(e) => {
-            error!("Could not parse DNS records in zone '{}': {}", zone_id, e);
+            error!("Could not parse DNS records: {}", e);
             return Err(());
         }
     };
@@ -270,7 +270,7 @@ fn cf_get_records(zone_id: &str, api_token: &str) -> Result<Vec<CfRecord>, ()> {
     let json_records = match json["result"].as_array() {
         Some(arr) => arr,
         None => {
-            error!("Could not parse array of DNS records in zone '{}'", zone_id);
+            error!("Could not parse array of DNS records");
             return Err(());
         }
     };
@@ -330,8 +330,8 @@ fn main() -> Result<(), ()> {
 
     let zone_id = env::var("CF_DNS_ZONE_ID").expect("CF_DNS_ZONE_ID not set");
     let api_token = env::var("CF_DNS_API_TOKEN").expect("CF_DNS_API_TOKEN not set");
-    let hosts = env::var("CF_DNS_HOSTS").expect("CF_DNS_HOSTS not set");
-    let hosts_vec = hosts
+    let hosts_string = env::var("CF_DNS_HOSTS").expect("CF_DNS_HOSTS not set");
+    let hosts = hosts_string
         .split(";")
         .collect::<HashSet<_>>()
         .into_iter()
@@ -348,8 +348,6 @@ fn main() -> Result<(), ()> {
     let repeat_interval: u64 = env::var("REPEAT_INTERVAL_SECONDS")
         .unwrap_or("0".to_string()).parse().expect("Could not parse the value of `REPEAT_INTERVAL_SECONDS`. Make sure it is an unsigned value in the form `REPEAT_INTERVAL_SECONDS=60`");
 
-    let mut cur_ipv4: Option<IpAddr> = None;
-    let mut cur_ipv6: Option<IpAddr> = None;
     let create_recors = env::var("CF_DNS_CREATE_HOST_RECORDS")
         .unwrap_or("false".to_string())
         .parse()
@@ -357,101 +355,91 @@ fn main() -> Result<(), ()> {
             "Could not read `CF_DNS_CREATE_HOST_RECORDS` which sould be either `true` or `false`",
         );
 
-    let mut ips = BTreeMap::new();
+    let mut cur_ips = BTreeMap::new();
+    let mut prev_ips = BTreeMap::new();
+
     loop {
-        ips.clear();
+        // get current IPs
         for (rtype, endpoint) in &endpoints {
             if let Ok(ip) = get_external_ip(rtype, endpoint) {
-                ips.insert(*rtype, ip);
+                cur_ips.insert(*rtype, ip);
             }
         }
 
-        if !ips.is_empty() {
-            // Log IpV4 status change
-            if let Some(ipv4) = ips.get(&RecordType::A) {
-                let curipv4 = match &cur_ipv4 {
-                    Some(ip) => ip.to_string(),
-                    None => "None".to_string(),
+        if let Ok(cf_recs) = cf_get_records(&zone_id, &api_token) {
+            for (rtype, cur_ip) in &cur_ips {
+                let ip_label = match rtype {
+                    RecordType::A => "IPv4",
+                    RecordType::AAAA => "IPv6",
                 };
-                info!("IPv4 changed from '{curipv4}' to '{ipv4}'");
-                cur_ipv4 = Some(*ipv4);
-            }
 
-            // Log IpV6 status change
-            if let Some(ipv6) = ips.get(&RecordType::AAAA) {
-                let curipv6 = match cur_ipv6 {
-                    Some(ip) => ip.to_string(),
-                    None => "None".to_string(),
-                };
-                info!("IPv6 changed from '{curipv6}' to '{ipv6}'");
-                cur_ipv6 = Some(*ipv6);
-            }
+                // Check IP change
+                match prev_ips.get(rtype) {
+                    Some(prev_ip) => {
+                        if cur_ip != prev_ip {
+                            info!("{ip_label} changed from '{prev_ip}' to '{cur_ip}'");
+                        }
+                    }
+                    None => {
+                        info!("{ip_label} changed from 'None' to '{cur_ip}'");
+                    }
+                }
 
-            // Check and update DNS records
-            if let Ok(cf_recs) = cf_get_records(&zone_id, &api_token) {
-                for host in &hosts_vec {
-                    if let Some(ip) = ips.get(&RecordType::A) {
-                        match cf_recs.iter().find(|r| {
-                            (r.record.name.as_str() == *host) && (r.record.rtype() == RecordType::A)
-                        }) {
-                            Some(cf_rec) => {
-                                if cf_rec.record.content != *ip {
-                                    match update_cf_record_ip(
-                                        &zone_id,
-                                        cf_rec.id.as_str(),
-                                        &ip,
-                                        &api_token,
-                                    ) {
-                                        Ok(_) => info!(
-                                            "Updated record '{}' of type '{}' to IP '{}'",
-                                            cf_rec.record.name,
-                                            cf_rec.record.rtype(),
-                                            ip
-                                        ),
-                                        Err(_) => error!(
-                                            "Failed to update record '{}' of type '{}' to IP '{}'",
-                                            cf_rec.record.name,
-                                            cf_rec.record.rtype(),
-                                            ip
-                                        ),
-                                    }
-                                } else {
-                                    // Nothing to update, IPs are identical
+                // Check and update DNS records
+                for host in &hosts {
+                    match cf_recs
+                        .iter()
+                        .find(|r| (r.record.name.as_str() == *host) && (r.record.rtype() == *rtype))
+                    {
+                        Some(cf_rec) => {
+                            if cf_rec.record.content != *cur_ip {
+                                match update_cf_record_ip(
+                                    &zone_id,
+                                    cf_rec.id.as_str(),
+                                    cur_ip,
+                                    &api_token,
+                                ) {
+                                    Ok(_) => info!(
+                                        "Updated record '{}' of type '{}' to IP '{}'",
+                                        cf_rec.record.name,
+                                        cf_rec.record.rtype(),
+                                        cur_ip
+                                    ),
+                                    Err(_) => error!(
+                                        "Failed to update record '{}' of type '{}' to IP '{}'",
+                                        cf_rec.record.name,
+                                        cf_rec.record.rtype(),
+                                        cur_ip
+                                    ),
                                 }
+                            } else {
+                                // Nothing to update, IPs are identical
                             }
-                            None => {
-                                if create_recors {
-                                    let record = Record {
-                                        name: (*host).to_string(),
-                                        ttl: Ttl::default(),
-                                        content: *ip,
-                                        proxied: false,
-                                    };
+                        }
+                        None => {
+                            if create_recors {
+                                let record = Record {
+                                    name: (*host).to_string(),
+                                    ttl: Ttl::default(),
+                                    content: *cur_ip,
+                                    proxied: false,
+                                };
 
-                                    match cf_create_record(&record, &zone_id, &api_token) {
-                                        Ok(_) => info!(
-                                            "Created record '{}' of type '{}' with IP '{}' in zone '{}'",
-                                            *host,
-                                            RecordType::A,
-                                            &ip,
-                                            zone_id
-                                        ),
-                                        Err(_) => error!(
-                                            "Failed to create record '{}' of type '{}' with IP '{}' in zone '{}'",
-                                            *host,
-                                            RecordType::A,
-                                            &ip,
-                                            zone_id
-                                        ),
-                                    }
-                                } else {
-                                    error!(
-                                        "No cloudlflare record found with name '{}' of type '{}' in zone '{}'",
-                                        *host,
-                                        RecordType::A,
-                                        zone_id
-                                    );
+                                match cf_create_record(&record, &zone_id, &api_token) {
+                                    Ok(_) => info!(
+                                        "Created record '{}' of type '{}' with IP '{}'",
+                                        *host, *rtype, cur_ip
+                                    ),
+                                    Err(_) => error!(
+                                        "Failed to create record '{}' of type '{}' with IP '{}'",
+                                        *host, *rtype, cur_ip
+                                    ),
                                 }
+                            } else {
+                                error!(
+                                    "No cloudlflare record found with name '{}' of type '{}'",
+                                    *host, *rtype
+                                );
                             }
                         }
                     }
@@ -459,8 +447,12 @@ fn main() -> Result<(), ()> {
             }
         }
 
-        // check_ips_and_update_dns(&api_key, &hosts_vec, &zones_vec, ipv4, ipv6)?;
         if repeat_interval > 0 {
+            let temp = prev_ips;
+            prev_ips = cur_ips;
+            cur_ips = temp;
+            cur_ips.clear();
+
             thread::sleep(Duration::from_secs(repeat_interval));
         } else {
             break;
