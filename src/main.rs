@@ -172,7 +172,6 @@ fn update_cf_record_ip(
         zone_id, record_id
     );
 
-    // Send a PUT request to the API endpoint
     let body = json!({
         "content": ip,
     });
@@ -207,8 +206,6 @@ fn cf_create_record(record: &Record, zone_id: &str, api_token: &str) -> Result<(
         "ttl": u32::from(record.ttl) ,
         "proxied": record.proxied
     });
-
-    println!("POST URL: {}\nPOST body: {}", post_url, body);
 
     let res = client
         .post(&post_url)
@@ -247,7 +244,6 @@ fn cf_create_record(record: &Record, zone_id: &str, api_token: &str) -> Result<(
 fn cf_get_records(zone_id: &str, api_token: &str) -> Result<Vec<CfRecord>, ()> {
     let client = reqwest::blocking::Client::new();
 
-    // First we get all DNS records in the zone matching the name and type
     let url = format!(
         "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
         zone_id,
@@ -290,6 +286,7 @@ fn cf_get_records(zone_id: &str, api_token: &str) -> Result<Vec<CfRecord>, ()> {
 fn cf_parse_record(value: &Value) -> Result<CfRecord, ()> {
     let id = value.get("id").ok_or(())?.as_str().ok_or(())?.to_string();
     let rtype = value.get("type").ok_or(())?.as_str().ok_or(())?;
+
     // Bail if the record type is not recognized as either `A` or `AAAA`
     let rtype = RecordType::try_from(rtype)?;
 
@@ -348,7 +345,8 @@ fn main() -> Result<(), ()> {
     if let Some(endpoint) = ipv6_endpoint {
         endpoints.insert(RecordType::AAAA, endpoint);
     }
-    let repeat_interval: u64 = env::var("REPEAT_INTERVAL_SECONDS").unwrap_or("0".to_string()).parse().expect("Could not parse the value of `REPEAT_INTERVAL_SECONDS`. Make sure it is an unsigned value in the form `REPEAT_INTERVAL_SECONDS=60`");
+    let repeat_interval: u64 = env::var("REPEAT_INTERVAL_SECONDS")
+        .unwrap_or("0".to_string()).parse().expect("Could not parse the value of `REPEAT_INTERVAL_SECONDS`. Make sure it is an unsigned value in the form `REPEAT_INTERVAL_SECONDS=60`");
 
     let mut cur_ipv4: Option<IpAddr> = None;
     let mut cur_ipv6: Option<IpAddr> = None;
@@ -419,7 +417,6 @@ fn main() -> Result<(), ()> {
                                     }
                                 } else {
                                     // Nothing to update, IPs are identical
-                                    info!("No change for '{}' of type '{}'", *host, RecordType::A,)
                                 }
                             }
                             None => {
