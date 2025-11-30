@@ -159,7 +159,7 @@ fn get_external_ip(rtype: &RecordType, api_endpoint: &str) -> Result<IpAddr, ()>
     }
 }
 
-fn update_cf_record_ip(
+fn cf_update_record_ip(
     zone_id: &str,
     record_id: &str,
     ip: &IpAddr,
@@ -393,22 +393,24 @@ fn main() -> Result<(), ()> {
                     {
                         Some(cf_rec) => {
                             if cf_rec.record.content != *cur_ip {
-                                match update_cf_record_ip(
+                                match cf_update_record_ip(
                                     &zone_id,
                                     cf_rec.id.as_str(),
                                     cur_ip,
                                     &api_token,
                                 ) {
                                     Ok(_) => info!(
-                                        "Updated record '{}' of type '{}' to IP '{}'",
-                                        cf_rec.record.name,
+                                        "Updated '{}' record '{}' from IP '{}' to '{}'",
                                         cf_rec.record.rtype(),
+                                        cf_rec.record.name,
+                                        cf_rec.record.content,
                                         cur_ip
                                     ),
                                     Err(_) => error!(
-                                        "Failed to update record '{}' of type '{}' to IP '{}'",
-                                        cf_rec.record.name,
+                                        "Failed to update '{}' record '{}' from IP '{}' to '{}'",
                                         cf_rec.record.rtype(),
+                                        cf_rec.record.name,
+                                        cf_rec.record.content,
                                         cur_ip
                                     ),
                                 }
@@ -427,12 +429,12 @@ fn main() -> Result<(), ()> {
 
                                 match cf_create_record(&record, &zone_id, &api_token) {
                                     Ok(_) => info!(
-                                        "Created record '{}' of type '{}' with IP '{}'",
-                                        *host, *rtype, cur_ip
+                                        "Created '{}' record '{}' with IP '{}'",
+                                        *rtype, *host, cur_ip
                                     ),
                                     Err(_) => error!(
-                                        "Failed to create record '{}' of type '{}' with IP '{}'",
-                                        *host, *rtype, cur_ip
+                                        "Failed to create '{}' record '{}' with IP '{}'",
+                                        *rtype, *host, cur_ip
                                     ),
                                 }
                             } else {
