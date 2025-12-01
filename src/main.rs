@@ -332,10 +332,13 @@ fn main() -> Result<(), ()> {
     let api_token = env::var("CF_DNS_API_TOKEN").expect("CF_DNS_API_TOKEN not set");
     let hosts_string = env::var("CF_DNS_HOSTS").expect("CF_DNS_HOSTS not set");
     let hosts = hosts_string
+        .trim()
         .split(";")
         .collect::<HashSet<_>>()
         .into_iter()
+        .filter(|name| !name.is_empty())
         .collect::<Vec<_>>();
+
     let ipv4_endpoint = env::var("IPV4_ENDPOINT").ok();
     let ipv6_endpoint = env::var("IPV6_ENDPOINT").ok();
     let mut endpoints = BTreeMap::new();
@@ -345,6 +348,11 @@ fn main() -> Result<(), ()> {
     if let Some(endpoint) = ipv6_endpoint {
         endpoints.insert(RecordType::AAAA, endpoint);
     }
+    if endpoints.is_empty() {
+        error!("At least one IP API endpoint must be defined!");
+        return Err(());
+    }
+
     let repeat_interval: u64 = env::var("REPEAT_INTERVAL_SECONDS")
         .unwrap_or("0".to_string()).parse().expect("Could not parse the value of `REPEAT_INTERVAL_SECONDS`. Make sure it is an unsigned value in the form `REPEAT_INTERVAL_SECONDS=60`");
 
@@ -354,6 +362,16 @@ fn main() -> Result<(), ()> {
         .expect(
             "Could not read `CF_DNS_CREATE_HOST_RECORDS` which sould be either `true` or `false`",
         );
+
+    // Print configuration info
+    info!("Monitoring {} hosts:", hosts.len());
+    for host in &hosts {
+        info!("\t{host}");
+    }
+    info!("For DNS {} record types:", endpoints.keys().len());
+    for key in endpoints.keys() {
+        info!("\t{key}");
+    }
 
     let mut cur_ips = BTreeMap::new();
     let mut prev_ips = BTreeMap::new();
