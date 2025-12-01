@@ -367,7 +367,11 @@ fn main() -> Result<(), ()> {
         return Err(());
     }
     let repeat_interval: u64 = env::var("REPEAT_INTERVAL_SECONDS")
-        .unwrap_or("0".to_string()).parse().expect("Could not parse the value of `REPEAT_INTERVAL_SECONDS`. Make sure it is an unsigned value in the form `REPEAT_INTERVAL_SECONDS=60`");
+        .unwrap_or("0".to_string())
+        .parse()
+        .expect(
+            "Could not parse the value of `REPEAT_INTERVAL_SECONDS`. Make sure it is an unsigned value in the form `REPEAT_INTERVAL_SECONDS=60`"
+        );
     let create_records_allowed = env::var("CF_DNS_CREATE_HOST_RECORDS")
         .unwrap_or("false".to_string())
         .parse()
@@ -464,7 +468,7 @@ fn main() -> Result<(), ()> {
             }
         }
 
-        // Check IP change
+        // Check IP changed
         for (rtype, _) in &endpoints {
             let prev_ip = prev_ips.get(rtype);
             let cur_ip = cur_ips.get(rtype);
