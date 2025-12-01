@@ -364,11 +364,11 @@ fn main() -> Result<(), ()> {
         );
 
     // Print configuration info
-    info!("Monitoring {} hosts:", hosts.len());
+    info!("Monitoring <{}> hosts:", hosts.len());
     for host in &hosts {
         info!("\t{host}");
     }
-    info!("For DNS {} record types:", endpoints.keys().len());
+    info!("For <{}> DNS record types:", endpoints.keys().len());
     for key in endpoints.keys() {
         info!("\t{key}");
     }
