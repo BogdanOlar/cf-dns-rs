@@ -328,8 +328,11 @@ fn main() -> Result<(), ()> {
 
     dotenv().ok();
 
-    let zone_id = env::var("CF_DNS_ZONE_ID").expect("CF_DNS_ZONE_ID not set");
-    let api_token = env::var("CF_DNS_API_TOKEN").expect("CF_DNS_API_TOKEN not set");
+    // load config from environment variables
+    let zone_id_string = env::var("CF_DNS_ZONE_ID").expect("CF_DNS_ZONE_ID not set");
+    let zone_id = zone_id_string.trim();
+    let api_token_string = env::var("CF_DNS_API_TOKEN").expect("CF_DNS_API_TOKEN not set");
+    let api_token = api_token_string.trim();
     let hosts_string = env::var("CF_DNS_HOSTS").expect("CF_DNS_HOSTS not set");
     let hosts = hosts_string
         .trim()
@@ -338,7 +341,6 @@ fn main() -> Result<(), ()> {
         .into_iter()
         .filter(|name| !name.is_empty())
         .collect::<Vec<_>>();
-
     let ipv4_endpoint = env::var("IPV4_ENDPOINT").ok();
     let ipv6_endpoint = env::var("IPV6_ENDPOINT").ok();
     let mut endpoints = BTreeMap::new();
@@ -352,10 +354,8 @@ fn main() -> Result<(), ()> {
         error!("At least one IP API endpoint must be defined!");
         return Err(());
     }
-
     let repeat_interval: u64 = env::var("REPEAT_INTERVAL_SECONDS")
         .unwrap_or("0".to_string()).parse().expect("Could not parse the value of `REPEAT_INTERVAL_SECONDS`. Make sure it is an unsigned value in the form `REPEAT_INTERVAL_SECONDS=60`");
-
     let create_records_allowed = env::var("CF_DNS_CREATE_HOST_RECORDS")
         .unwrap_or("false".to_string())
         .parse()
@@ -384,26 +384,11 @@ fn main() -> Result<(), ()> {
             }
         }
 
-        if let Ok(cf_recs) = cf_get_records(&zone_id, &api_token) {
+        // Check and update DNS records
+        if !cur_ips.is_empty()
+            && let Ok(cf_recs) = cf_get_records(&zone_id, &api_token)
+        {
             for (rtype, cur_ip) in &cur_ips {
-                let ip_label = match rtype {
-                    RecordType::A => "IPv4",
-                    RecordType::AAAA => "IPv6",
-                };
-
-                // Check IP change
-                match prev_ips.get(rtype) {
-                    Some(prev_ip) => {
-                        if cur_ip != prev_ip {
-                            info!("{ip_label} changed from '{prev_ip}' to '{cur_ip}'");
-                        }
-                    }
-                    None => {
-                        info!("{ip_label} changed from 'None' to '{cur_ip}'");
-                    }
-                }
-
-                // Check and update DNS records
                 for host in &hosts {
                     match cf_recs
                         .iter()
@@ -467,7 +452,23 @@ fn main() -> Result<(), ()> {
             }
         }
 
+        // Check IP change
+        for (rtype, _) in &endpoints {
+            let ip_label = match rtype {
+                RecordType::A => "IPv4",
+                RecordType::AAAA => "IPv6",
+            };
+
+            let prev_ip = prev_ips.get(rtype);
+            let cur_ip = cur_ips.get(rtype);
+
+            if prev_ip != cur_ip {
+                info!("{ip_label} changed from '{:?}' to '{:?}'", prev_ip, cur_ip);
+            }
+        }
+
         if repeat_interval > 0 {
+            // update previous IPs
             let temp = prev_ips;
             prev_ips = cur_ips;
             cur_ips = temp;
