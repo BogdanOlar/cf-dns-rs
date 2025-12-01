@@ -166,7 +166,7 @@ fn cf_update_record_ip(
     api_token: &str,
 ) -> Result<(), ()> {
     let client = reqwest::blocking::Client::new();
-    // We need to update the record
+
     let url = format!(
         "https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}",
         zone_id, record_id
@@ -348,7 +348,7 @@ fn main() -> Result<(), ()> {
     let repeat_interval: u64 = env::var("REPEAT_INTERVAL_SECONDS")
         .unwrap_or("0".to_string()).parse().expect("Could not parse the value of `REPEAT_INTERVAL_SECONDS`. Make sure it is an unsigned value in the form `REPEAT_INTERVAL_SECONDS=60`");
 
-    let create_records_alowed = env::var("CF_DNS_CREATE_HOST_RECORDS")
+    let create_records_allowed = env::var("CF_DNS_CREATE_HOST_RECORDS")
         .unwrap_or("false".to_string())
         .parse()
         .expect(
@@ -419,7 +419,7 @@ fn main() -> Result<(), ()> {
                             }
                         }
                         None => {
-                            if create_records_alowed {
+                            if create_records_allowed {
                                 let record = Record {
                                     name: (*host).to_string(),
                                     ttl: Ttl::default(),
