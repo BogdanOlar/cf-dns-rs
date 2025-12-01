@@ -33,6 +33,7 @@ struct CfRecord {
     record: Record,
 }
 
+/// DNS record type. Only `A` and `AAAA` are supported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum RecordType {
     A,
@@ -69,6 +70,10 @@ impl Display for RecordType {
     }
 }
 
+/// Cloudflare TTL.
+///
+/// Setting to 1 means 'automatic'. Value must be between 60 and 86400, with the minimum reduced to 30 for Enterprise
+/// zones.
 #[derive(Debug, Clone, Copy)]
 enum Ttl {
     Auto,
@@ -80,7 +85,11 @@ impl TryFrom<u32> for Ttl {
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
+            // Auto TTL
             1 => Ok(Self::Auto),
+            // Enterprise zones
+            30..60 => Ok(Self::Seconds(value)),
+            // Non-Enterprise zones
             60..=86400 => Ok(Self::Seconds(value)),
             // Invalid value
             _ => Err(()),
@@ -112,6 +121,7 @@ impl Display for Ttl {
     }
 }
 
+/// Get the current external IP from a given endpoint. The `rtype` represents which IP (4/6) the endpoint will return.
 fn get_external_ip(rtype: &RecordType, api_endpoint: &str) -> Result<IpAddr, ()> {
     let res = match reqwest::blocking::Client::new().get(api_endpoint).send() {
         Ok(r) => r,
@@ -159,6 +169,7 @@ fn get_external_ip(rtype: &RecordType, api_endpoint: &str) -> Result<IpAddr, ()>
     }
 }
 
+/// Update a Cloudflare DNS record
 fn cf_update_record_ip(
     zone_id: &str,
     record_id: &str,
@@ -195,6 +206,7 @@ fn cf_update_record_ip(
     }
 }
 
+/// Create a new Cloudflare DNS record
 fn cf_create_record(record: &Record, zone_id: &str, api_token: &str) -> Result<(), ()> {
     let client = reqwest::blocking::Client::new();
     let post_url = format!("https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records");
@@ -234,13 +246,13 @@ fn cf_create_record(record: &Record, zone_id: &str, api_token: &str) -> Result<(
                 record.name, record.content, e
             ),
         }
-        error!("\tRequest URL: {post_url}");
-        error!("\tRequest body: {body}");
         Err(())
     }
 }
 
-/// Get all DNS records of type `A` and `AAAA`
+/// Get all DNS records of type `A` and `AAAA` in the given zone
+///
+/// Any record which cannot be parsed will be ignored.
 fn cf_get_records(zone_id: &str, api_token: &str) -> Result<Vec<CfRecord>, ()> {
     let client = reqwest::blocking::Client::new();
 
@@ -454,15 +466,15 @@ fn main() -> Result<(), ()> {
 
         // Check IP change
         for (rtype, _) in &endpoints {
-            let ip_label = match rtype {
-                RecordType::A => "IPv4",
-                RecordType::AAAA => "IPv6",
-            };
-
             let prev_ip = prev_ips.get(rtype);
             let cur_ip = cur_ips.get(rtype);
 
             if prev_ip != cur_ip {
+                let ip_label = match rtype {
+                    RecordType::A => "IPv4",
+                    RecordType::AAAA => "IPv6",
+                };
+
                 info!("{ip_label} changed from '{:?}' to '{:?}'", prev_ip, cur_ip);
             }
         }
