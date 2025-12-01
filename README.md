@@ -4,7 +4,7 @@ Cloudflare Dynamic DNS update tool
 
 Periodically checks the current external IP (v4 and/or v6) and updates the Cloudflare DNS records.
 
-## Running
+## Build and run
 
 The tool needs an `.env` file present in the root project directory, containing the CloudFlare and Run configurations.
 
@@ -18,7 +18,13 @@ cargo run --release
 
 You can also build a Docker container, in which case the `.env` file will be automatically loaded.
 
-### Example `.env` file
+```sh
+git clone https://github.com/BogdanOlar/cf-dns-rs.git
+cd ./cf-dns-rs
+sudo docker compose up -d --no-deps --build
+```
+
+## Example `.env` file
 
 ```sh
 # IP API endpoints.
@@ -28,6 +34,11 @@ You can also build a Docker container, in which case the `.env` file will be aut
 # `A` records will be updated)
 IPV4_ENDPOINT=https://api.ipify.org
 #IPV6_ENDPOINT=https://api6.ipify.org
+
+# Timeout interval between IP change checks. An interval of `0`
+# will cause the app to only run once and then exit. If the
+# repeat interval is not defined, then it defaults to `0`
+REPEAT_INTERVAL_SECONDS=60
 
 # Cloudflare zone ID (see your account's "Overview" page to get
 # the zone ID)
@@ -46,16 +57,4 @@ CF_DNS_HOSTS=example.com;yyyyyyy.example.com;*.zzzzz.example.com
 # if it cannot find one of the hosts above in the existing record
 # list
 #CF_DNS_CREATE_HOST_RECORDS=true
-
-# Timeout interval between IP change checks. An interval of `0`
-# will cause the app to only run once and then exit
-REPEAT_INTERVAL_SECONDS=60
-```
-
-## Build and run container
-
-```sh
-git clone https://github.com/BogdanOlar/cf-dns-rs.git
-cd ./cf-dns-rs
-sudo docker compose up -d --no-deps --build
 ```
