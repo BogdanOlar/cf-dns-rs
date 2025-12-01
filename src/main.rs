@@ -366,7 +366,7 @@ fn main() -> Result<(), ()> {
     // Print configuration info
     info!("Monitoring <{}> hosts:", hosts.len());
     for host in &hosts {
-        info!("\t{host}");
+        info!("\t'{host}'");
     }
     info!("For <{}> DNS record types:", endpoints.keys().len());
     for (rtype, endpoint) in &endpoints {
