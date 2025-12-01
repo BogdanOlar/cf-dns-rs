@@ -393,10 +393,25 @@ fn main() -> Result<(), ()> {
     let mut prev_ips = BTreeMap::new();
 
     loop {
-        // get current IPs
+        // Get current IPs
         for (rtype, endpoint) in &endpoints {
             if let Ok(ip) = get_external_ip(rtype, endpoint) {
                 cur_ips.insert(*rtype, ip);
+            }
+        }
+
+        // Check IP changed
+        for (rtype, _) in &endpoints {
+            let prev_ip = prev_ips.get(rtype);
+            let cur_ip = cur_ips.get(rtype);
+
+            if prev_ip != cur_ip {
+                let ip_label = match rtype {
+                    RecordType::A => "IPv4",
+                    RecordType::AAAA => "IPv6",
+                };
+
+                info!("{ip_label} changed from '{:?}' to '{:?}'", prev_ip, cur_ip);
             }
         }
 
@@ -465,21 +480,6 @@ fn main() -> Result<(), ()> {
                         }
                     }
                 }
-            }
-        }
-
-        // Check IP changed
-        for (rtype, _) in &endpoints {
-            let prev_ip = prev_ips.get(rtype);
-            let cur_ip = cur_ips.get(rtype);
-
-            if prev_ip != cur_ip {
-                let ip_label = match rtype {
-                    RecordType::A => "IPv4",
-                    RecordType::AAAA => "IPv6",
-                };
-
-                info!("{ip_label} changed from '{:?}' to '{:?}'", prev_ip, cur_ip);
             }
         }
 
