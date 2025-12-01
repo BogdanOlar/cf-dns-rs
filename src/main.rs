@@ -270,7 +270,7 @@ fn cf_get_records(zone_id: &str, api_token: &str) -> Result<Vec<CfRecord>, ()> {
     let json_records = match json["result"].as_array() {
         Some(arr) => arr,
         None => {
-            error!("Could not parse array of DNS records");
+            error!("Could not parse array of DNS records:\n{:#?}", json);
             return Err(());
         }
     };
@@ -369,8 +369,8 @@ fn main() -> Result<(), ()> {
         info!("\t{host}");
     }
     info!("For <{}> DNS record types:", endpoints.keys().len());
-    for key in endpoints.keys() {
-        info!("\t{key}");
+    for (rtype, endpoint) in &endpoints {
+        info!("\t'{rtype}' with IP sourced from '{endpoint}'");
     }
 
     let mut cur_ips = BTreeMap::new();
